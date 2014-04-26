@@ -17,13 +17,11 @@ func Run() {
 }
 
 func gen(nums ...int) <-chan int {
-	out := make(chan int)
-	go func() {
-		for _, n := range nums {
-			out <- n
-		}
-		close(out)
-	}()
+	out := make(chan int, len(nums))
+	for _, n := range nums {
+		out <- n
+	}
+	close(out)
 	return out
 }
 
@@ -40,7 +38,7 @@ func sq(in <-chan int) <-chan int {
 
 func merge(cs ...<-chan int) <-chan int {
 	var wg sync.WaitGroup
-	out := make(chan int)
+	out := make(chan int, 1)
 
 	output := func(in <-chan int) {
 		for v := range in {
