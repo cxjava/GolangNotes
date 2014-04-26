@@ -7,6 +7,10 @@ func Run() {
 	out := sq(c)
 	fmt.Println(<-out)
 	fmt.Println(<-out)
+
+	for v := range sq(sq(gen(2, 3))) {
+		fmt.Println(v)
+	}
 }
 
 func gen(nums ...int) <-chan int {
