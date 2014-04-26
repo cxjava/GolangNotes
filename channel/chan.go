@@ -11,9 +11,15 @@ func Run() {
 	out2 := sq(c)
 	out3 := sq(c)
 
-	for v := range merge(out1, out2, out3) {
-		fmt.Println(v)
-	}
+	done := make(chan struct{}, 2)
+
+	out := merge(done, out1, out2, out3)
+	fmt.Println(<-out)
+
+	done <- struct{}{}
+	done <- struct{}{}
+	done <- struct{}{}
+
 }
 
 func gen(nums ...int) <-chan int {
@@ -36,13 +42,17 @@ func sq(in <-chan int) <-chan int {
 	return out
 }
 
-func merge(cs ...<-chan int) <-chan int {
+func merge(done <-chan struct{}, cs ...<-chan int) <-chan int {
 	var wg sync.WaitGroup
-	out := make(chan int, 1)
+	out := make(chan int)
 
 	output := func(in <-chan int) {
 		for v := range in {
 			out <- v
+			select {
+			case out <- v:
+			case <-done:
+			}
 		}
 		wg.Done()
 	}
