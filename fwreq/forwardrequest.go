@@ -2,8 +2,12 @@ package fwreq
 
 import (
 	"bufio"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -12,18 +16,70 @@ import (
 	"github.com/cxjava/GolangNotes/common"
 )
 
+var (
+	VulnerableCipherSuites = []uint16{
+		tls.TLS_ECDHE_ECDSA_WITH_RC4_128_SHA,
+		tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
+		tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
+		tls.TLS_ECDHE_RSA_WITH_RC4_128_SHA,
+		tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA,
+		tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+		tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+	}
+)
+
 func ForWardRequest() {
 	fmt.Println("ForWardRequest!")
-	// body := doForWardRequest2("113.57.187.29", "GET", "https://kyfw.12306.cn/otn/leftTicket/init", nil)
-	// body := doForWardRequest("113.57.187.29", "GET", "http://kyfw.12306.cn/otn/leftTicket/init", nil)
-	body := doForWardRequest2("118.194.41.18", "GET", "http://www.zonezu.com/login.do?from=/daybook.jsp", nil)
-	fmt.Println(body)
+	// fmt.Println(doForWardRequest("113.57.187.29", "GET", "https://kyfw.12306.cn/otn/leftTicket/init", nil))
+	// fmt.Println(doForWardRequest("113.57.187.29", "GET", "https://kyfw.12306.cn/otn/leftTicket/init", nil))
+	// fmt.Println(doForWardRequest("118.194.41.18", "GET", "http://www.zonezu.com/login.do?from=/daybook.jsp", nil))
+	fmt.Println(doForWardRequest3())
+	// fmt.Println(doForWardRequest4())
+}
+
+func doForWardRequest3() (html string) {
+	client := &http.Client{}
+	// var client = http.Client{
+	// 	Transport: &http.Transport{
+	// 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	// 	},
+	// }
+	request, err := http.NewRequest("GET", "https://113.57.187.29/otn/leftTicket/init", nil)
+	// request, err := http.NewRequest("GET", "http://118.194.41.18/login.do?from=/daybook.jsp", nil)
+	if err != nil {
+		fmt.Println("http.NewRequest", err)
+		html = ""
+		return
+	}
+	request.Close = true
+	// request.Header.Set("Host", "www.zonezu.com")
+	// request.Header.Set("Host", "kyfw.12306.cn")
+	common.AddReqestHeader(request, "GET")
+	request.Close = true
+
+	response, err := client.Do(request)
+	if err != nil {
+		fmt.Println("client.Do", err)
+		html = ""
+		return
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusOK {
+		_, html = common.ParseResponseBody(response)
+		fmt.Println("postUrl:", "response body:", html)
+	} else {
+		fmt.Println("postUrl:", "Status Code:", response.StatusCode)
+		html = ""
+	}
+	return
 }
 
 //转发
 func doForWardRequest(forwardAddress, method, requestUrl string, body io.Reader) (content string) {
 	if !strings.Contains(forwardAddress, ":") {
-		forwardAddress = forwardAddress + ":80"
+		forwardAddress = forwardAddress + ":443"
 	}
 
 	conn, err := net.Dial("tcp", forwardAddress)
@@ -91,7 +147,7 @@ func doForWardRequest2(forwardAddress, method, requestUrl string, body io.Reader
 	fmt.Println(reqest.URL.Host, ",", reqest.URL.Path)
 
 	clientConn := httputil.NewClientConn(tcpConn, nil)
-
+	// httputil.NewServerConn(c, r)
 	//req, err := http.NewRequest("GET", c.path.String(), nil)
 	resp, err := clientConn.Do(reqest)
 
@@ -112,6 +168,80 @@ func doForWardRequest2(forwardAddress, method, requestUrl string, body io.Reader
 		fmt.Println("doForWardRequest content:", content)
 	} else {
 		fmt.Println("StatusCode:", resp.StatusCode, resp.Header, resp.Cookies())
+	}
+	return
+}
+func doForWardRequest4() (html string) {
+	log.Println("hijacking TLS connection")
+
+	tlsConn, err := tls.Dial("tcp", "113.57.187.29:80", nil)
+	defer tlsConn.Close()
+
+	if err != nil {
+		log.Println("error dialing TLS, falling back:", err)
+		// p.doConnectRequest(w, r)
+		return
+	}
+
+	cs := tlsConn.ConnectionState()
+	peerCerts := cs.PeerCertificates
+
+	fakedCert := tls.Certificate{}
+
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+
+	if err != nil {
+		fmt.Println("GenerateKey", err)
+		return ""
+	}
+
+	fakedCert.PrivateKey = rsaKey
+
+	for _, peerCert := range peerCerts {
+		fakedCert.Certificate = append(fakedCert.Certificate, peerCert.Raw)
+	}
+
+	host, _, _ := net.SplitHostPort("kyfw.12306.cn")
+
+	config := &tls.Config{
+		Certificates:             []tls.Certificate{fakedCert},
+		ServerName:               host,
+		PreferServerCipherSuites: true,
+		CipherSuites:             VulnerableCipherSuites,
+		MaxVersion:               tls.VersionTLS11,
+	}
+
+	var client = http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: config,
+		},
+	}
+	request, err := http.NewRequest("GET", "https://113.57.187.29/otn/leftTicket/init", nil)
+	// request, err := http.NewRequest("GET", "http://118.194.41.18/login.do?from=/daybook.jsp", nil)
+	if err != nil {
+		fmt.Println("http.NewRequest", err)
+		html = ""
+		return
+	}
+	request.Close = true
+	// request.Header.Set("Host", "www.zonezu.com")
+	// request.Header.Set("Host", "kyfw.12306.cn")
+	common.AddReqestHeader(request, "GET")
+	request.Close = true
+
+	response, err := client.Do(request)
+	if err != nil {
+		fmt.Println("client.Do", err)
+		html = ""
+		return
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusOK {
+		_, html = common.ParseResponseBody(response)
+		fmt.Println("postUrl:", "response body:", html)
+	} else {
+		fmt.Println("postUrl:", "Status Code:", response.StatusCode)
+		html = ""
 	}
 	return
 }
