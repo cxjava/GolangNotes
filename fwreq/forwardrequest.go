@@ -32,62 +32,37 @@ var (
 
 func ForWardRequest() {
 	fmt.Println("ForWardRequest!")
+	fmt.Println(doForWardRequest("113.57.187.29", "GET", "http://kyfw.12306.cn/otn/", nil))
+	fmt.Println(doForWardRequest("113.57.187.29", "GET", "http://kyfw.12306.cn/otn/leftTicket/init", nil))
 	// fmt.Println(doForWardRequest("113.57.187.29", "GET", "https://kyfw.12306.cn/otn/leftTicket/init", nil))
-	// fmt.Println(doForWardRequest("113.57.187.29", "GET", "https://kyfw.12306.cn/otn/leftTicket/init", nil))
-	// fmt.Println(doForWardRequest("118.194.41.18", "GET", "http://www.zonezu.com/login.do?from=/daybook.jsp", nil))
-	fmt.Println(doForWardRequest3())
+	fmt.Println(doForWardRequest("118.194.41.18", "GET", "http://www.zonezu.com/login.do?from=/daybook.jsp", nil))
+	// fmt.Println(doForWardRequest3())
 	// fmt.Println(doForWardRequest4())
-}
-
-func doForWardRequest3() (html string) {
-	client := &http.Client{}
-	// var client = http.Client{
-	// 	Transport: &http.Transport{
-	// 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	// 	},
-	// }
-	request, err := http.NewRequest("GET", "https://113.57.187.29/otn/leftTicket/init", nil)
-	// request, err := http.NewRequest("GET", "http://118.194.41.18/login.do?from=/daybook.jsp", nil)
-	if err != nil {
-		fmt.Println("http.NewRequest", err)
-		html = ""
-		return
-	}
-	request.Close = true
-	// request.Header.Set("Host", "www.zonezu.com")
-	// request.Header.Set("Host", "kyfw.12306.cn")
-	common.AddReqestHeader(request, "GET")
-	request.Close = true
-
-	response, err := client.Do(request)
-	if err != nil {
-		fmt.Println("client.Do", err)
-		html = ""
-		return
-	}
-	defer response.Body.Close()
-	if response.StatusCode == http.StatusOK {
-		_, html = common.ParseResponseBody(response)
-		fmt.Println("postUrl:", "response body:", html)
-	} else {
-		fmt.Println("postUrl:", "Status Code:", response.StatusCode)
-		html = ""
-	}
-	return
 }
 
 //转发
 func doForWardRequest(forwardAddress, method, requestUrl string, body io.Reader) (content string) {
 	if !strings.Contains(forwardAddress, ":") {
-		forwardAddress = forwardAddress + ":443"
+		forwardAddress = forwardAddress + ":80"
 	}
 
-	conn, err := net.Dial("tcp", forwardAddress)
+	// conn, err := net.Dial("tcp", forwardAddress)
+	conn, err := tls.Dial("tcp", forwardAddress, &tls.Config{
+		InsecureSkipVerify: true,
+	})
 	if err != nil {
 		fmt.Println("doForWardRequest DialTimeout error:", err)
 		return
 	}
 	defer conn.Close()
+
+	cs := conn.ConnectionState()
+	fmt.Printf("State = %#v\n", cs)
+
+	for i, cert := range cs.PeerCertificates {
+		fmt.Printf("Cert[%d] = %x\n", i, cert.Signature)
+	}
+
 	//buf_forward_conn *bufio.Reader
 	buf_forward_conn := bufio.NewReader(conn)
 
@@ -217,6 +192,73 @@ func doForWardRequest4() (html string) {
 		},
 	}
 	request, err := http.NewRequest("GET", "https://113.57.187.29/otn/leftTicket/init", nil)
+	// request, err := http.NewRequest("GET", "http://118.194.41.18/login.do?from=/daybook.jsp", nil)
+	if err != nil {
+		fmt.Println("http.NewRequest", err)
+		html = ""
+		return
+	}
+	request.Close = true
+	// request.Header.Set("Host", "www.zonezu.com")
+	// request.Header.Set("Host", "kyfw.12306.cn")
+	common.AddReqestHeader(request, "GET")
+	request.Close = true
+
+	response, err := client.Do(request)
+	if err != nil {
+		fmt.Println("client.Do", err)
+		html = ""
+		return
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusOK {
+		_, html = common.ParseResponseBody(response)
+		fmt.Println("postUrl:", "response body:", html)
+	} else {
+		fmt.Println("postUrl:", "Status Code:", response.StatusCode)
+		html = ""
+	}
+	return
+}
+func doForWardRequest3() (html string) {
+	conn, err := tls.Dial("tcp", "218.75.201.31:443", &tls.Config{
+		InsecureSkipVerify: true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	cs := conn.ConnectionState()
+	fmt.Printf("State = %#v\n", cs)
+
+	for i, cert := range cs.PeerCertificates {
+		fmt.Printf("Cert[%d] = %x\n", i, cert.Signature)
+	}
+	fakedCert := tls.Certificate{}
+	for _, peerCert := range cs.PeerCertificates {
+		fakedCert.Certificate = append(fakedCert.Certificate, peerCert.Raw)
+	}
+
+	// client := httputil.NewClientConn(conn, nil)
+	// client := &http.Client{}
+	// var client = http.Client{
+	// 	Transport: &http.Transport{
+	// 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	// 	},
+	// }
+
+	config := &tls.Config{
+		InsecureSkipVerify: true,
+		Certificates:       []tls.Certificate{fakedCert},
+	}
+
+	var client = http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: config,
+		},
+	}
+
+	request, err := http.NewRequest("GET", "https://218.75.201.31/otn/leftTicket/init", nil)
 	// request, err := http.NewRequest("GET", "http://118.194.41.18/login.do?from=/daybook.jsp", nil)
 	if err != nil {
 		fmt.Println("http.NewRequest", err)

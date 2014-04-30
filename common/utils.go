@@ -38,8 +38,8 @@ func ParseResponseBody(resp *http.Response) (e error, content string) {
 
 //添加头
 func AddReqestHeader(request *http.Request, method string) {
-	request.Header.Set("Host", "kyfw.12306.cn")
-	request.Header.Add("Accept-Encoding", "identity")
+	// request.Header.Set("Host", "kyfw.12306.cn")
+	// request.Header.Add("Accept-Encoding", "identity")
 	// request.Header.Set("Connection", "keep-alive")
 	// request.Header.Set("Cache-Control", "no-cache")
 	request.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
